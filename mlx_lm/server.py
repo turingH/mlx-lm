@@ -1106,7 +1106,7 @@ class ResponseGenerator:
 
             # Process the prompt and generate tokens
             stop_reader = stop_sm.reader()
-            for gen in stream_generate(
+            generation = stream_generate(
                 model=model,
                 stream=stream,
                 tokenizer=tokenizer,
@@ -1123,7 +1123,8 @@ class ResponseGenerator:
                 kv_bits=self.cli_args.kv_bits,
                 kv_group_size=self.cli_args.kv_group_size,
                 quantized_kv_start=self.cli_args.quantized_kv_start,
-            ):
+            )
+            for gen in generation:
                 text, finish_reason = _apply_stop_words(
                     stop_reader, gen.text, finish_reason=gen.finish_reason
                 )
@@ -1150,6 +1151,12 @@ class ResponseGenerator:
                     break
 
             rqueue.put(None)
+
+            # Close the generator only after the response is finished. Closing
+            # it can still update the cache (speculative decoding feeds the
+            # tokens it yielded but did not process), and the client does not
+            # need to wait for that.
+            generation.close()
 
             # Save the KV cache again
             self.prompt_cache.insert_cache(
